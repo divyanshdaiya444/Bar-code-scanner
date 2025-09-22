@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cattle Breed QR Codes</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { text-align: center; }
+    #controls { text-align: center; margin-bottom: 20px; }
+    button { margin: 5px; padding: 10px 15px; cursor: pointer; }
+    .qr-item { display: inline-block; text-align: center; margin: 10px; }
+    .qr-item canvas, .qr-item img { display: block; margin: auto; }
+    #preview { display: flex; flex-wrap: wrap; justify-content: center; }
+    #scanner { margin-top: 20px; text-align: center; }
+    video { width: 300px; border: 1px solid #ccc; border-radius: 6px; }
+    input { padding: 6px; margin: 10px; width: 200px; }
+    #outputBox {
+      margin-top: 15px;
+      padding: 12px;
+      border: 2px solid #333;
+      border-radius: 6px;
+      display: inline-block;
+      font-size: 16px;
+      background: #f9f9f9;
+      min-width: 250px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Cattle Breeds QR Codes</h1>
+
+  <div id="controls">
+    <input type="text" id="search" placeholder="Search breed...">
+    <button id="generateAll">Generate All</button>
+    <button id="downloadZIP">Download All as ZIP</button>
+    <button id="downloadPDF">Download All as PDF</button>
+  </div>
+
+  <div id="preview"></div>
+
+  <div id="scanner">
+    <h2>Scan QR Code</h2>
+    <video id="video" autoplay></video><br>
+    <button id="startScan">Start Camera</button>
+    <br><br>
+    <input type="file" id="uploadImage" accept="image/*">
+    <div id="outputBox">Scanned Result: <span id="result">---</span></div>
+  </div>
+
+  <!-- Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
+
+  <script>
+    // --- Breed list ---
+    const breeds = [
+      "Holstein Friesian","Jersey","Guernsey","Ayrshire","Brown Swiss","Red Poll",
+      "Simmental","Charolais","Limousin","Hereford","Angus (Aberdeen Angus)","Shorthorn",
+      "Beefmaster","Santa Gertrudis","Brahman (Zebu)","Nelore","Gir","Sahiwal","Tharparkar",
+      "Rathi","Hariana","Kankrej","Ongole","Krishna Valley","Malvi","Deoni","Red Sindhi",
+      "Mewati","Nagori","Amrit Mahal","Kangayam","Umblachery","Vechur","Pulikulam","Bargur",
+      "Hallikar","Khillari","Dangi","Gaolao","Rath","Kherigarh","Ponwar","Siri","Yakutian Cattle",
+      "Belgian Blue","Highland Cattle","Galloway","Chianina","Piedmontese","Maine-Anjou"
+    ];
+
+    const preview = document.getElementById("preview");
+
+    // --- Unique short code for labeling ---
+    const makeShortCode = (i) => `B${String(i+1).padStart(3,"0")}`;
+
+    // Generate one QR item
+    function generateOne(index) {
+      const name = breeds[index];
+      const code = name;  // QR will store full breed name
+
+      if (document.getElementById(`qr-${index}`)) return;
+
+      const div = document.createElement("div");
+      div.className = "qr-item";
+      div.id = `qr-${index}`;
+
+      const qrDiv = document.createElement("div");
+      new QRCode(qrDiv, { text: code, width: 128, height: 128 });
+
+      const label = document.createElement("p");
+      label.textContent = `${name} (${makeShortCode(index)})`;
+
+      const btn = document.createElement("button");
+      btn.textContent = "Download PNG";
+      btn.onclick = () => {
+        const canvas = qrDiv.querySelector("canvas");
+        const link = document.createElement("a");
+        link.href = canvas.toDataURL("image/png");
+        link.download = `${makeShortCode(index)}.png`;
+        link.click();
+      };
+
+      div.appendChild(qrDiv);
+      div.appendChild(label);
+      div.appendChild(btn);
+      preview.appendChild(div);
+    }
+
+    // Generate all QR codes
+    document.getElementById("generateAll").onclick = () => {
+      preview.innerHTML = "";
+      breeds.forEach((_, i) => generateOne(i));
+    };
+
+    // Search filter
+    document.getElementById("search").oninput = function() {
+      const val = this.value.toLowerCase();
+      preview.innerHTML = "";
+      breeds.forEach((b,i)=>{
+        if(b.toLowerCase().includes(val)) generateOne(i);
+      });
+    };
+
+    // Download all as ZIP
+    document.getElementById("downloadZIP").onclick = async () => {
+      const zip = new JSZip();
+      breeds.forEach((b,i)=>generateOne(i));
+      for (let i=0; i<breeds.length; i++) {
+        const el=document.getElementById(`qr-${i}`);
+        const canvas=el.querySelector("canvas");
+        const data=canvas.toDataURL("image/png").split(",")[1];
+        zip.file(`${makeShortCode(i)}.png`, data, {base64:true});
+      }
+      const content = await zip.generateAsync({type:"blob"});
+      saveAs(content, "cattle-breeds-qr.zip");
+    };
+
+    // Download all as PDF (3x5 grid with borders)
+    document.getElementById("downloadPDF").onclick=async ()=>{
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit:"pt", format:"a4" });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+
+      const cols = 3, rows = 5;
+      const marginX = 40, marginY = 40;
+      const qrSize = 100;
+      const cellW = (pageWidth - marginX*2) / cols;
+      const cellH = (pageHeight - marginY*2) / rows;
+
+      breeds.forEach((b,i)=>generateOne(i));
+
+      let i = 0;
+      for (let b = 0; b < breeds.length; b++) {
+        const el = document.getElementById(`qr-${b}`);
+        const canvas = el.querySelector("canvas");
+        const img = el.querySelector("img");
+        let dataUrl = canvas ? canvas.toDataURL("image/png") : (img?.src || "");
+
+        const col = i % cols;
+        const row = Math.floor(i / cols) % rows;
+        const x = marginX + col * cellW;
+        const y = marginY + row * cellH;
+
+        // border
+        doc.setDrawColor(180);
+        doc.rect(x, y, cellW, cellH);
+
+        // QR centered
+        const qrX = x + (cellW - qrSize) / 2;
+        const qrY = y + 10;
+
+        if (dataUrl) {
+          doc.addImage(dataUrl, "PNG", qrX, qrY, qrSize, qrSize);
+          doc.setFontSize(10);
+          doc.text(breeds[b], x + cellW/2, qrY + qrSize + 14, {align:"center"});
+          doc.text(makeShortCode(b), x + cellW/2, qrY + qrSize + 28, {align:"center"});
+        }
+
+        i++;
+        if (i % (cols * rows) === 0 && b < breeds.length - 1) {
+          doc.addPage();
+        }
+      }
+      doc.save("cattle-breeds-qr-cards.pdf");
+    };
+
+    // --- QR Scanner (camera) ---
+    const video=document.getElementById("video");
+    const result=document.getElementById("result");
+
+    document.getElementById("startScan").onclick=async ()=>{
+      try{
+        const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+        video.srcObject=stream;
+        const canvas=document.createElement("canvas");
+        const ctx=canvas.getContext("2d");
+
+        function scan(){
+          if(video.readyState===video.HAVE_ENOUGH_DATA){
+            canvas.width=video.videoWidth;
+            canvas.height=video.videoHeight;
+            ctx.drawImage(video,0,0,canvas.width,canvas.height);
+            const imageData=ctx.getImageData(0,0,canvas.width,canvas.height);
+            const code=jsQR(imageData.data,canvas.width,canvas.height);
+            if(code){ result.textContent=code.data; }
+          }
+          requestAnimationFrame(scan);
+        }
+        scan();
+      }catch(err){
+        alert("Camera access failed: "+err);
+      }
+    };
+
+    // --- QR Scanner (uploaded image) ---
+    document.getElementById("uploadImage").onchange = function(evt) {
+      const file = evt.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img,0,0);
+          const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+          const code = jsQR(imageData.data, canvas.width, canvas.height);
+          if(code){ result.textContent = code.data; }
+          else{ result.textContent = "No QR code found."; }
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    };
+  </script>
+</body>
+</html>
